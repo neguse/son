@@ -1,0 +1,4 @@
+.git
+assets/main.js
+server/bindata_assetfs.go
+server/main
