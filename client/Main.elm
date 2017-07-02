@@ -2,8 +2,11 @@ module Main exposing (..)
 
 import Html exposing (..)
 import Html.Events exposing (..)
-import Html.Attributes exposing (..)
+import Html.Attributes exposing (value)
 import WebSocket
+import Json.Encode exposing (Value, encode)
+import Json.Decode exposing (decodeString, Decoder)
+import Json.Decode.Pipeline exposing (decode, required)
 
 
 serverAddr : String
@@ -25,15 +28,37 @@ main =
 -- MODEL
 
 
+type alias Message =
+    { user : String
+    , body : String
+    }
+
+
 type alias Model =
-    { input : String
-    , messages : List String
+    { inputUser : String
+    , inputBody : String
+    , messages : List Message
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model "" [], Cmd.none )
+    ( Model "" "" [], Cmd.none )
+
+
+messageDecoder : Decoder Message
+messageDecoder =
+    decode Message
+        |> required "user" Json.Decode.string
+        |> required "body" Json.Decode.string
+
+
+messageEncoder : Message -> Value
+messageEncoder msg =
+    Json.Encode.object
+        [ ( "user", Json.Encode.string msg.user )
+        , ( "body", Json.Encode.string msg.body )
+        ]
 
 
 
@@ -41,22 +66,34 @@ init =
 
 
 type Msg
-    = Input String
+    = InputUser String
+    | InputBody String
     | Send
     | NewMessage String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg { input, messages } =
+update msg { inputUser, inputBody, messages } =
     case msg of
-        Input newInput ->
-            ( Model newInput messages, Cmd.none )
+        InputUser newUser ->
+            ( Model newUser inputBody messages, Cmd.none )
+
+        InputBody newBody ->
+            ( Model inputUser newBody messages, Cmd.none )
 
         Send ->
-            ( Model "" messages, WebSocket.send serverAddr input )
+            ( Model inputUser "" messages
+            , WebSocket.send serverAddr
+                (encode 0 (messageEncoder (Message inputUser inputBody)))
+            )
 
         NewMessage str ->
-            ( Model input (str :: messages), Cmd.none )
+            case decodeString messageDecoder str of
+                Ok msg ->
+                    ( Model inputUser inputBody (msg :: messages), Cmd.none )
+
+                Err err ->
+                    ( Model inputUser inputBody ((Message "error" err) :: messages), Cmd.none )
 
 
 
@@ -75,12 +112,13 @@ subscriptions model =
 view : Model -> Html Msg
 view model =
     div []
-        [ div [] (List.map viewMessage model.messages)
-        , input [ onInput Input, value model.input ] []
+        [ input [ onInput InputUser, value model.inputUser ] []
+        , input [ onInput InputBody, value model.inputBody ] []
         , button [ onClick Send ] [ text "Send" ]
+        , div [] (List.map viewMessage model.messages)
         ]
 
 
-viewMessage : String -> Html msg
+viewMessage : Message -> Html msg
 viewMessage msg =
-    div [] [ text msg ]
+    div [] [ text (msg.user ++ " says " ++ msg.body ++ "."), br [] [] ]
