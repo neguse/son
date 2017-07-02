@@ -172,24 +172,28 @@ func (s *Server) Main() {
 						p.VX += math.Cos(p.A) * 1.0
 						p.VY += math.Sin(p.A) * 1.0
 					}
-					p.VX *= 0.99
-					p.VY *= 0.99
+					p.VX *= 0.92
+					p.VY *= 0.92
 					p.X += p.VX
 					p.Y += p.VY
-					if p.X < 0 {
-						p.X = 0
+					left := p.R
+					right := W - p.R
+					top := p.R
+					bottom := H - p.R
+					if p.X < left {
+						p.X = left
 						p.VX = -p.VX
 					}
-					if p.Y < 0 {
-						p.Y = 0
+					if p.Y < top {
+						p.Y = top
 						p.VY = -p.VY
 					}
-					if W < p.X {
-						p.X = W
+					if right < p.X {
+						p.X = right
 						p.VX = -p.VX
 					}
-					if H < p.Y {
-						p.Y = H
+					if bottom < p.Y {
+						p.Y = bottom
 						p.VY = -p.VY
 					}
 					msg.Players = append(msg.Players, *p)
