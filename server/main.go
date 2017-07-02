@@ -19,11 +19,19 @@ type Message struct {
 	Body string `json:"body"`
 }
 
+type S2CMessage struct {
+	Messages []Message `json:"messages"`
+}
+type C2SMessage struct {
+	User string `json:"user"`
+	Body string `json:"body"`
+}
+
 type Client struct {
 	conn *websocket.Conn
 
-	sendingCh chan *Message
-	recvingCh chan *Message
+	sendingCh chan *S2CMessage
+	recvingCh chan *C2SMessage
 	errCh     chan error
 }
 
@@ -36,18 +44,18 @@ const (
 func NewClient(conn *websocket.Conn) *Client {
 	c := &Client{
 		conn:      conn,
-		sendingCh: make(chan *Message, SendBuf),
-		recvingCh: make(chan *Message, RecvBuf),
+		sendingCh: make(chan *S2CMessage, SendBuf),
+		recvingCh: make(chan *C2SMessage, RecvBuf),
 		errCh:     make(chan error, ErrBuf),
 	}
 	return c
 }
 
-func (c *Client) Send(msg *Message) {
+func (c *Client) Send(msg *S2CMessage) {
 	c.sendingCh <- msg
 }
 
-func (c *Client) Recv() <-chan *Message {
+func (c *Client) Recv() <-chan *C2SMessage {
 	return c.recvingCh
 }
 
@@ -95,7 +103,7 @@ func (c *Client) Main() {
 			}
 
 			if mt == websocket.TextMessage {
-				var recvMsg Message
+				var recvMsg C2SMessage
 				err = json.Unmarshal(message, &recvMsg)
 				if err != nil {
 					c.errCh <- err
@@ -107,20 +115,24 @@ func (c *Client) Main() {
 	}()
 }
 
+const (
+	Limit = 10
+)
+
 type Server struct {
-	messages []Message
-	clients  map[*Client]struct{}
+	state   S2CMessage
+	clients map[*Client]struct{}
 }
 
 func NewServer() *Server {
 	s := &Server{
-		messages: nil,
-		clients:  make(map[*Client]struct{}),
+		state:   S2CMessage{Messages: []Message{}},
+		clients: make(map[*Client]struct{}),
 	}
 	return s
 }
 
-func (s *Server) Broadcast(msg *Message) {
+func (s *Server) Broadcast(msg *S2CMessage) {
 	for c, _ := range s.clients {
 		c.Send(msg)
 	}
@@ -128,12 +140,11 @@ func (s *Server) Broadcast(msg *Message) {
 
 func (s *Server) Main() {
 	for {
-		pongTick := time.Tick(1 * time.Second)
+		updateTick := time.Tick(100 * time.Millisecond)
 		for {
 			select {
-			case <-pongTick:
-				pong := Message{User: "server", Body: "pong"}
-				s.Broadcast(&pong)
+			case <-updateTick:
+				s.Broadcast(&s.state)
 			}
 		}
 		log.Println("clients:", len(s.clients))
@@ -158,7 +169,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case recv := <-client.Recv():
-				s.Broadcast(recv)
+				lim := len(s.state.Messages)
+				if lim > Limit {
+					lim = Limit
+				}
+				s.state.Messages = append(
+					[]Message{Message{recv.User, recv.Body}},
+					s.state.Messages[:lim]...)
 			case err := <-client.Err():
 				log.Println("client error:", client, err)
 				s.Close(client)
@@ -170,7 +187,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func main() {
 	s := NewServer()
 	go s.Main()
-	http.Handle("/echo", s)
+	http.Handle("/ws", s)
 	fs := assetFS()
 	fs.Prefix = "assets"
 	http.Handle("/", http.FileServer(fs))

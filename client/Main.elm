@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import Array exposing (Array, empty, toList)
 import Html exposing (..)
 import Html.Events exposing (..)
 import Html.Attributes exposing (value)
@@ -11,7 +12,7 @@ import Json.Decode.Pipeline exposing (decode, required)
 
 serverAddr : String
 serverAddr =
-    "ws://localhost:12345/echo"
+    "ws://localhost:12345/ws"
 
 
 main : Program Never Model Msg
@@ -28,7 +29,15 @@ main =
 -- MODEL
 
 
-type alias Message =
+type alias S2CMessage =
+    { messages : Array Message }
+
+type alias Message = 
+    { user : String
+    , body : String
+    }
+
+type alias C2SMessage =
     { user : String
     , body : String
     }
@@ -37,23 +46,28 @@ type alias Message =
 type alias Model =
     { inputUser : String
     , inputBody : String
-    , messages : List Message
+    , messages : S2CMessage
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model "" "" [], Cmd.none )
+    ( Model "" "" (S2CMessage empty), Cmd.none )
 
 
-messageDecoder : Decoder Message
-messageDecoder =
+msgDecoder : Decoder Message
+msgDecoder =
     decode Message
         |> required "user" Json.Decode.string
         |> required "body" Json.Decode.string
 
+messageDecoder : Decoder S2CMessage
+messageDecoder =
+    decode S2CMessage
+        |> required "messages" (Json.Decode.array msgDecoder)
 
-messageEncoder : Message -> Value
+
+messageEncoder : C2SMessage -> Value
 messageEncoder msg =
     Json.Encode.object
         [ ( "user", Json.Encode.string msg.user )
@@ -84,16 +98,16 @@ update msg { inputUser, inputBody, messages } =
         Send ->
             ( Model inputUser "" messages
             , WebSocket.send serverAddr
-                (encode 0 (messageEncoder (Message inputUser inputBody)))
+                (encode 0 (messageEncoder (C2SMessage inputUser inputBody)))
             )
 
         NewMessage str ->
             case decodeString messageDecoder str of
-                Ok msg ->
-                    ( Model inputUser inputBody (msg :: messages), Cmd.none )
+                Ok smsg ->
+                    ( Model inputUser inputBody smsg, Cmd.none )
 
                 Err err ->
-                    ( Model inputUser inputBody ((Message "error" err) :: messages), Cmd.none )
+                    ( Model inputUser inputBody messages, Debug.crash err )
 
 
 
@@ -115,7 +129,7 @@ view model =
         [ input [ onInput InputUser, value model.inputUser ] []
         , input [ onInput InputBody, value model.inputBody ] []
         , button [ onClick Send ] [ text "Send" ]
-        , div [] (List.map viewMessage model.messages)
+        , div [] (toList (Array.map viewMessage model.messages.messages))
         ]
 
 
