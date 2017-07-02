@@ -1,10 +1,8 @@
 module Main exposing (..)
 
 import Array exposing (Array, empty, toList)
-import Color exposing (Color)
+import Keyboard exposing (..)
 import Html exposing (..)
-import Html.Events exposing (..)
-import Html.Attributes exposing (value)
 import WebSocket
 import Json.Encode exposing (Value, encode)
 import Json.Decode exposing (decodeString, Decoder)
@@ -45,8 +43,9 @@ type alias Player =
 
 
 type alias C2SMessage =
-    { user : String
-    , body : String
+    { l : Bool
+    , r : Bool
+    , u : Bool
     }
 
 
@@ -54,12 +53,13 @@ type alias Model =
     { inputUser : String
     , inputBody : String
     , state : S2CMessage
+    , keyState : C2SMessage
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model "" "" (S2CMessage empty), Cmd.none )
+    ( Model "" "" (S2CMessage empty) (C2SMessage False False False), Cmd.none )
 
 
 playerDecoder : Decoder Player
@@ -80,8 +80,9 @@ messageDecoder =
 messageEncoder : C2SMessage -> Value
 messageEncoder msg =
     Json.Encode.object
-        [ ( "user", Json.Encode.string msg.user )
-        , ( "body", Json.Encode.string msg.body )
+        [ ( "l", Json.Encode.bool msg.l )
+        , ( "r", Json.Encode.bool msg.r )
+        , ( "u", Json.Encode.bool msg.u )
         ]
 
 
@@ -92,32 +93,72 @@ messageEncoder msg =
 type Msg
     = InputUser String
     | InputBody String
-    | Send
     | NewMessage String
+    | KeyDown KeyCode
+    | KeyUp KeyCode
+
+
+leftKeyCode : Int
+leftKeyCode =
+    37
+
+
+rightKeyCode : Int
+rightKeyCode =
+    39
+
+
+upKeyCode : Int
+upKeyCode =
+    38
+
+
+changeKey : KeyCode -> Bool -> C2SMessage -> C2SMessage
+changeKey key isDown state =
+    if key == leftKeyCode then
+        { state | l = isDown }
+    else if key == rightKeyCode then
+        { state | r = isDown }
+    else if key == upKeyCode then
+        { state | u = isDown }
+    else
+        state
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg { inputUser, inputBody, state } =
+update msg { inputUser, inputBody, state, keyState } =
     case msg of
         InputUser newUser ->
-            ( Model newUser inputBody state, Cmd.none )
+            ( Model newUser inputBody state keyState, Cmd.none )
 
         InputBody newBody ->
-            ( Model inputUser newBody state, Cmd.none )
-
-        Send ->
-            ( Model inputUser "" state
-            , WebSocket.send serverAddr
-                (encode 0 (messageEncoder (C2SMessage inputUser inputBody)))
-            )
+            ( Model inputUser newBody state keyState, Cmd.none )
 
         NewMessage str ->
             case decodeString messageDecoder str of
                 Ok newState ->
-                    ( Model inputUser inputBody newState, Cmd.none )
+                    ( Model inputUser inputBody newState keyState, Cmd.none )
 
                 Err err ->
-                    ( Model inputUser inputBody state, Debug.crash err )
+                    Debug.crash err
+
+        KeyDown code ->
+            let
+                newKeyState =
+                    (changeKey code True keyState)
+            in
+                ( Model inputUser inputBody state newKeyState
+                , WebSocket.send serverAddr (encode 0 (messageEncoder newKeyState))
+                )
+
+        KeyUp code ->
+            let
+                newKeyState =
+                    (changeKey code False keyState)
+            in
+                ( Model inputUser inputBody state newKeyState
+                , WebSocket.send serverAddr (encode 0 (messageEncoder newKeyState))
+                )
 
 
 
@@ -126,7 +167,11 @@ update msg { inputUser, inputBody, state } =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    WebSocket.listen serverAddr NewMessage
+    Sub.batch
+        [ WebSocket.listen serverAddr NewMessage
+        , downs KeyDown
+        , ups KeyUp
+        ]
 
 
 
@@ -137,8 +182,10 @@ view : Model -> Html Msg
 view model =
     svg [ width "320", height "320", viewBox "0 0 320 320" ]
         ((rect [ width "320", height "320", fill "none", stroke "#000" ] [])
-           :: (List.concatMap viewPlayer (toList model.state.players)))
-        
+            :: (List.concatMap viewPlayer (toList model.state.players))
+        )
+
+
 viewPlayer : Player -> List (Svg msg)
 viewPlayer p =
     [ circle

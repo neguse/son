@@ -22,18 +22,31 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+type PlayerState struct {
+	Player   *Player
+	KeyState *KeyState
+}
 type Player struct {
-	X float64 `json:"x"`
-	Y float64 `json:"y"`
-	R float64 `json:"r"`
-	A float64 `json:"a"`
+	X  float64 `json:"x"`
+	Y  float64 `json:"y"`
+	VX float64 `json""vx"`
+	VY float64 `json:"vy"`
+	R  float64 `json:"r"`
+	A  float64 `json:"a"`
 }
 
 type S2CMessage struct {
 	Players []Player `json:"players"`
 }
-type C2SMessage struct {
+
+type KeyState struct {
+	L bool `json:"l"`
+	R bool `json:"r"`
+	U bool `json:"u"`
+	D bool `json:"d"`
 }
+
+type C2SMessage KeyState
 
 type Client struct {
 	conn *websocket.Conn
@@ -123,23 +136,19 @@ func (c *Client) Main() {
 	}()
 }
 
-const (
-	Limit = 10
-)
-
 type Server struct {
-	clients map[*Client]*Player
+	clients map[*Client]*PlayerState
 }
 
 func NewServer() *Server {
 	s := &Server{
-		clients: make(map[*Client]*Player),
+		clients: make(map[*Client]*PlayerState),
 	}
 	return s
 }
 
 func (s *Server) Broadcast(msg *S2CMessage) {
-	for c, _ := range s.clients {
+	for c := range s.clients {
 		c.Send(msg)
 	}
 }
@@ -151,10 +160,38 @@ func (s *Server) Main() {
 			select {
 			case <-updateTick:
 				var msg S2CMessage
-				for _, p := range s.clients {
-					p.A += 0.1
-					p.X += math.Cos(p.A) * 1.0
-					p.Y += math.Sin(p.A) * 1.0
+				for _, ps := range s.clients {
+					p, ks := ps.Player, ps.KeyState
+					if ks.L && ks.R {
+					} else if ks.L {
+						p.A -= 0.1
+					} else if ks.R {
+						p.A += 0.1
+					}
+					if ks.U {
+						p.VX += math.Cos(p.A) * 1.0
+						p.VY += math.Sin(p.A) * 1.0
+					}
+					p.VX *= 0.99
+					p.VY *= 0.99
+					p.X += p.VX
+					p.Y += p.VY
+					if p.X < 0 {
+						p.X = 0
+						p.VX = -p.VX
+					}
+					if p.Y < 0 {
+						p.Y = 0
+						p.VY = -p.VY
+					}
+					if W < p.X {
+						p.X = W
+						p.VX = -p.VX
+					}
+					if H < p.Y {
+						p.Y = H
+						p.VY = -p.VY
+					}
 					msg.Players = append(msg.Players, *p)
 				}
 				s.Broadcast(&msg)
@@ -176,12 +213,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := NewClient(c)
-	s.clients[client] = &Player{X: rand.Float64() * W, Y: rand.Float64() * H, R: R}
+	s.clients[client] = &PlayerState{
+		Player: &Player{
+			X:  rand.Float64() * W,
+			Y:  rand.Float64() * H,
+			R:  R,
+			A:  0.0,
+			VX: 0.0,
+			VY: 0.0,
+		},
+		KeyState: &KeyState{},
+	}
 	go client.Main()
 	go func() {
 		for {
 			select {
-			case <-client.Recv():
+			case recvMsg := <-client.Recv():
+				ks := s.clients[client].KeyState
+				ks.L = recvMsg.L
+				ks.R = recvMsg.R
+				ks.U = recvMsg.U
+				ks.D = recvMsg.D
 
 			case err := <-client.Err():
 				log.Println("client error:", client, err)
