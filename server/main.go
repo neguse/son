@@ -24,12 +24,13 @@ type Client struct {
 
 	sendingCh chan *Message
 	recvingCh chan *Message
-	err       chan error
+	errCh     chan error
 }
 
 const (
 	RecvBuf = 32
 	SendBuf = 32
+	ErrBuf  = 32
 )
 
 func NewClient(conn *websocket.Conn) *Client {
@@ -37,6 +38,7 @@ func NewClient(conn *websocket.Conn) *Client {
 		conn:      conn,
 		sendingCh: make(chan *Message, SendBuf),
 		recvingCh: make(chan *Message, RecvBuf),
+		errCh:     make(chan error, ErrBuf),
 	}
 	return c
 }
@@ -50,7 +52,7 @@ func (c *Client) Recv() <-chan *Message {
 }
 
 func (c *Client) Err() <-chan error {
-	return c.err
+	return c.errCh
 }
 
 func (c *Client) Close() {
@@ -64,12 +66,16 @@ func (c *Client) Main() {
 			msg := <-c.sendingCh
 			data, err := json.Marshal(msg)
 			if err != nil {
-				c.err <- err
+				c.errCh <- err
 				continue
 			}
 			err = c.conn.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
-				c.err <- err
+				c.errCh <- err
+				if _, ok := err.(*websocket.CloseError); ok {
+					c.Close()
+					break
+				}
 				continue
 			}
 		}
@@ -80,7 +86,11 @@ func (c *Client) Main() {
 		for {
 			mt, message, err := c.conn.ReadMessage()
 			if err != nil {
-				c.err <- err
+				c.errCh <- err
+				if _, ok := err.(*websocket.CloseError); ok {
+					c.Close()
+					break
+				}
 				continue
 			}
 
@@ -88,12 +98,11 @@ func (c *Client) Main() {
 				var recvMsg Message
 				err = json.Unmarshal(message, &recvMsg)
 				if err != nil {
-					c.err <- err
+					c.errCh <- err
 					continue
 				}
 				c.recvingCh <- &recvMsg
 			}
-
 		}
 	}()
 }
@@ -127,6 +136,7 @@ func (s *Server) Main() {
 				s.Broadcast(&pong)
 			}
 		}
+		log.Println("clients:", len(s.clients))
 	}
 }
 
