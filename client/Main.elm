@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import AnimationFrame
 import Array exposing (Array, empty, toList)
 import Keyboard exposing (..)
 import Html exposing (..)
@@ -9,6 +10,7 @@ import Json.Decode exposing (decodeString, Decoder)
 import Json.Decode.Pipeline exposing (decode, required)
 import Svg exposing (..)
 import Svg.Attributes exposing (..)
+import Time exposing (Time)
 
 
 serverAddr : String
@@ -38,6 +40,9 @@ type alias Player =
     { x : Float
     , y : Float
     , a : Float
+    , vx : Float
+    , vy : Float
+    , va : Float
     , r : Float
     }
 
@@ -53,13 +58,15 @@ type alias Model =
     { inputUser : String
     , inputBody : String
     , state : S2CMessage
+    , stateFrom : Maybe Time
+    , now : Maybe Time
     , keyState : C2SMessage
     }
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model "" "" (S2CMessage empty) (C2SMessage False False False), Cmd.none )
+    ( Model "" "" (S2CMessage empty) Nothing Nothing (C2SMessage False False False), Cmd.none )
 
 
 playerDecoder : Decoder Player
@@ -68,6 +75,9 @@ playerDecoder =
         |> required "x" Json.Decode.float
         |> required "y" Json.Decode.float
         |> required "a" Json.Decode.float
+        |> required "vx" Json.Decode.float
+        |> required "vy" Json.Decode.float
+        |> required "va" Json.Decode.float
         |> required "r" Json.Decode.float
 
 
@@ -91,7 +101,8 @@ messageEncoder msg =
 
 
 type Msg
-    = InputUser String
+    = OnFrame Time
+    | InputUser String
     | InputBody String
     | NewMessage String
     | KeyDown KeyCode
@@ -126,18 +137,26 @@ changeKey key isDown state =
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg { inputUser, inputBody, state, keyState } =
+update msg { inputUser, inputBody, state, stateFrom, now, keyState } =
     case msg of
+        OnFrame justNow ->
+            case stateFrom of
+                Just _ ->
+                    ( Model inputUser inputBody state stateFrom (Just justNow) keyState, Cmd.none )
+
+                Nothing ->
+                    ( Model inputUser inputBody state (Just justNow) (Just justNow) keyState, Cmd.none )
+
         InputUser newUser ->
-            ( Model newUser inputBody state keyState, Cmd.none )
+            ( Model newUser inputBody state stateFrom now keyState, Cmd.none )
 
         InputBody newBody ->
-            ( Model inputUser newBody state keyState, Cmd.none )
+            ( Model inputUser newBody state stateFrom now keyState, Cmd.none )
 
         NewMessage str ->
             case decodeString messageDecoder str of
                 Ok newState ->
-                    ( Model inputUser inputBody newState keyState, Cmd.none )
+                    ( Model inputUser inputBody newState Nothing Nothing keyState, Cmd.none )
 
                 Err err ->
                     Debug.crash err
@@ -147,7 +166,7 @@ update msg { inputUser, inputBody, state, keyState } =
                 newKeyState =
                     (changeKey code True keyState)
             in
-                ( Model inputUser inputBody state newKeyState
+                ( Model inputUser inputBody state stateFrom now newKeyState
                 , WebSocket.send serverAddr (encode 0 (messageEncoder newKeyState))
                 )
 
@@ -156,7 +175,7 @@ update msg { inputUser, inputBody, state, keyState } =
                 newKeyState =
                     (changeKey code False keyState)
             in
-                ( Model inputUser inputBody state newKeyState
+                ( Model inputUser inputBody state stateFrom now newKeyState
                 , WebSocket.send serverAddr (encode 0 (messageEncoder newKeyState))
                 )
 
@@ -168,7 +187,8 @@ update msg { inputUser, inputBody, state, keyState } =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ WebSocket.listen serverAddr NewMessage
+        [ AnimationFrame.times OnFrame
+        , WebSocket.listen serverAddr NewMessage
         , downs KeyDown
         , ups KeyUp
         ]
@@ -182,25 +202,66 @@ view : Model -> Html Msg
 view model =
     svg [ width "320", height "320", viewBox "0 0 320 320" ]
         ((rect [ width "320", height "320", fill "none", stroke "#000" ] [])
-            :: (List.concatMap viewPlayer (toList model.state.players))
+            :: (List.concatMap
+                    (viewPlayer (diffTime model.stateFrom model.now))
+                    (toList model.state.players)
+               )
         )
 
 
-viewPlayer : Player -> List (Svg msg)
-viewPlayer p =
-    [ circle
-        [ cx (toString p.x)
-        , cy (toString p.y)
-        , r (toString p.r)
-        , stroke "#000"
+diffTime : Maybe Time -> Maybe Time -> Time
+diffTime begin now =
+    case ( begin, now ) of
+        ( Just jBegin, Just jNow ) ->
+            jNow - jBegin
+
+        _ ->
+            0
+
+
+reckoningPlayer : Time -> Player -> Player
+reckoningPlayer t p =
+    let
+        tsec =
+            Time.inSeconds t
+    in
+        { p | x = p.x + tsec * p.vx, y = p.y + tsec * p.vy, a = p.a + tsec * p.va }
+
+
+viewPlayer : Time -> Player -> List (Svg msg)
+viewPlayer t p =
+    let
+        p_ =
+            (reckoningPlayer t p)
+    in
+        [ circle
+            [ cx (toString p_.x)
+            , cy (toString p_.y)
+            , r (toString p_.r)
+            , stroke "#000"
+            ]
+            []
+        , line
+            [ x1 (toString p_.x)
+            , y1 (toString p_.y)
+            , x2 (toString (p_.x + p_.r * 2 * (cos p_.a)))
+            , y2 (toString (p_.y + p_.r * 2 * (sin p_.a)))
+            , stroke "#000"
+            ]
+            []
+        , circle
+            [ cx (toString p.x)
+            , cy (toString p.y)
+            , r (toString p.r)
+            , stroke "#444"
+            ]
+            []
+        , line
+            [ x1 (toString p.x)
+            , y1 (toString p.y)
+            , x2 (toString (p.x + p.r * 2 * (cos p.a)))
+            , y2 (toString (p.y + p.r * 2 * (sin p.a)))
+            , stroke "#444"
+            ]
+            []
         ]
-        []
-    , line
-        [ x1 (toString p.x)
-        , y1 (toString p.y)
-        , x2 (toString (p.x + p.r * 2 * (cos p.a)))
-        , y2 (toString (p.y + p.r * 2 * (sin p.a)))
-        , stroke "#000"
-        ]
-        []
-    ]

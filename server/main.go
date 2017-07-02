@@ -16,6 +16,10 @@ const (
 	W = 320.0
 	H = 320.0
 	R = 10.0
+
+	ROT  = 1.4
+	ACC  = 80.0
+	FRIC = -0.01
 )
 
 var upgrader = websocket.Upgrader{
@@ -29,10 +33,11 @@ type PlayerState struct {
 type Player struct {
 	X  float64 `json:"x"`
 	Y  float64 `json:"y"`
-	VX float64 `json""vx"`
-	VY float64 `json:"vy"`
-	R  float64 `json:"r"`
 	A  float64 `json:"a"`
+	VX float64 `json:"vx"`
+	VY float64 `json:"vy"`
+	VA float64 `json:"va"`
+	R  float64 `json:"r"`
 }
 
 type S2CMessage struct {
@@ -154,52 +159,56 @@ func (s *Server) Broadcast(msg *S2CMessage) {
 }
 
 func (s *Server) Main() {
+	updateTick := time.Tick(100 * time.Millisecond)
+	lastTick := time.Now()
 	for {
-		updateTick := time.Tick(100 * time.Millisecond)
-		for {
-			select {
-			case <-updateTick:
-				var msg S2CMessage
-				for _, ps := range s.clients {
-					p, ks := ps.Player, ps.KeyState
-					if ks.L && ks.R {
-					} else if ks.L {
-						p.A -= 0.1
-					} else if ks.R {
-						p.A += 0.1
-					}
-					if ks.U {
-						p.VX += math.Cos(p.A) * 1.0
-						p.VY += math.Sin(p.A) * 1.0
-					}
-					p.VX *= 0.92
-					p.VY *= 0.92
-					p.X += p.VX
-					p.Y += p.VY
-					left := p.R
-					right := W - p.R
-					top := p.R
-					bottom := H - p.R
-					if p.X < left {
-						p.X = left
-						p.VX = -p.VX
-					}
-					if p.Y < top {
-						p.Y = top
-						p.VY = -p.VY
-					}
-					if right < p.X {
-						p.X = right
-						p.VX = -p.VX
-					}
-					if bottom < p.Y {
-						p.Y = bottom
-						p.VY = -p.VY
-					}
-					msg.Players = append(msg.Players, *p)
+		select {
+		case now := <-updateTick:
+			dt := time.Since(lastTick).Seconds()
+			lastTick = now
+			var msg S2CMessage
+			for _, ps := range s.clients {
+				p, ks := ps.Player, ps.KeyState
+				p.VA = 0
+				if ks.L && ks.R {
+				} else if ks.L {
+					p.VA = -ROT
+				} else if ks.R {
+					p.VA = ROT
 				}
-				s.Broadcast(&msg)
+				p.A += p.VA * dt
+
+				if ks.U {
+					p.VX += math.Cos(p.A) * ACC * dt
+					p.VY += math.Sin(p.A) * ACC * dt
+				}
+				p.VX += p.VX * FRIC * dt
+				p.VY += p.VY * FRIC * dt
+				p.X += p.VX * dt
+				p.Y += p.VY * dt
+				left := p.R
+				right := W - p.R
+				top := p.R
+				bottom := H - p.R
+				if p.X < left {
+					p.X = left
+					p.VX = -p.VX
+				}
+				if p.Y < top {
+					p.Y = top
+					p.VY = -p.VY
+				}
+				if right < p.X {
+					p.X = right
+					p.VX = -p.VX
+				}
+				if bottom < p.Y {
+					p.Y = bottom
+					p.VY = -p.VY
+				}
+				msg.Players = append(msg.Players, *p)
 			}
+			s.Broadcast(&msg)
 		}
 		log.Println("clients:", len(s.clients))
 	}
