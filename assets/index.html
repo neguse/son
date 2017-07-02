@@ -5,10 +5,16 @@
         <title>son</title>
     </head>
     <body>
-        <div id="main"></div>
         <script src="/main.js" charset="utf-8"></script>
         <script>
-        var node = document.getElementById('main');
-        var app = Elm.Main.embed(node);
+        var getEndpoint = function() {
+            proto = window.location.protocol == 'https:' ? 'wss:' : 'ws:';
+            host = window.location.hostname;
+            port = window.location.port.length == 0 ? '' : ':' + window.location.port
+            return proto + '//' + window.location.hostname + port + '/ws'
+        }
+        var app = Elm.Main.fullscreen({
+            endpoint: getEndpoint()
+        });
         </script>
 </html>

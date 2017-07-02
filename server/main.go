@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
+	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"net/http"
-
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,7 +20,7 @@ const (
 
 	ROT  = 1.4
 	ACC  = 80.0
-	FRIC = -0.01
+	FRIC = -0.2
 )
 
 var upgrader = websocket.Upgrader{
@@ -257,13 +258,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	var port int
+	flag.IntVar(&port, "port", 8080, "listen port")
+	flag.Parse()
+
 	s := NewServer()
 	go s.Main()
 	http.Handle("/ws", s)
 	fs := assetFS()
 	fs.Prefix = "assets"
 	http.Handle("/", http.FileServer(fs))
-	err := http.ListenAndServe(":12345", nil)
+	err := http.ListenAndServe(fmt.Sprint(":", port), nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
 	}

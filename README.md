@@ -2,7 +2,7 @@
 # Usage
 
 ```
-./build.sh && ./server/main
-open localhost:12345
+./build.sh && ./server/main &
+open localhost:8080
 ```
 
