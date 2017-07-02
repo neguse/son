@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"math"
+	"math/rand"
 	"net/http"
 
 	"time"
@@ -10,21 +12,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	W = 320.0
+	H = 320.0
+	R = 10.0
+)
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-type Message struct {
-	User string `json:"user"`
-	Body string `json:"body"`
+type Player struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+	R float64 `json:"r"`
+	A float64 `json:"a"`
 }
 
 type S2CMessage struct {
-	Messages []Message `json:"messages"`
+	Players []Player `json:"players"`
 }
 type C2SMessage struct {
-	User string `json:"user"`
-	Body string `json:"body"`
 }
 
 type Client struct {
@@ -120,14 +128,12 @@ const (
 )
 
 type Server struct {
-	state   S2CMessage
-	clients map[*Client]struct{}
+	clients map[*Client]*Player
 }
 
 func NewServer() *Server {
 	s := &Server{
-		state:   S2CMessage{Messages: []Message{}},
-		clients: make(map[*Client]struct{}),
+		clients: make(map[*Client]*Player),
 	}
 	return s
 }
@@ -144,7 +150,14 @@ func (s *Server) Main() {
 		for {
 			select {
 			case <-updateTick:
-				s.Broadcast(&s.state)
+				var msg S2CMessage
+				for _, p := range s.clients {
+					p.A += 0.1
+					p.X += math.Cos(p.A) * 1.0
+					p.Y += math.Sin(p.A) * 1.0
+					msg.Players = append(msg.Players, *p)
+				}
+				s.Broadcast(&msg)
 			}
 		}
 		log.Println("clients:", len(s.clients))
@@ -163,19 +176,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := NewClient(c)
-	s.clients[client] = struct{}{}
+	s.clients[client] = &Player{X: rand.Float64() * W, Y: rand.Float64() * H, R: R}
 	go client.Main()
 	go func() {
 		for {
 			select {
-			case recv := <-client.Recv():
-				lim := len(s.state.Messages)
-				if lim > Limit {
-					lim = Limit
-				}
-				s.state.Messages = append(
-					[]Message{Message{recv.User, recv.Body}},
-					s.state.Messages[:lim]...)
+			case <-client.Recv():
+
 			case err := <-client.Err():
 				log.Println("client error:", client, err)
 				s.Close(client)
