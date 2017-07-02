@@ -19,8 +19,120 @@ type Message struct {
 	Body string `json:"body"`
 }
 
-// Server is http.Handler
+type Client struct {
+	conn *websocket.Conn
+
+	sendingCh chan *Message
+	recvingCh chan *Message
+	err       chan error
+}
+
+const (
+	RecvBuf = 32
+	SendBuf = 32
+)
+
+func NewClient(conn *websocket.Conn) *Client {
+	c := &Client{
+		conn:      conn,
+		sendingCh: make(chan *Message, SendBuf),
+		recvingCh: make(chan *Message, RecvBuf),
+	}
+	return c
+}
+
+func (c *Client) Send(msg *Message) {
+	c.sendingCh <- msg
+}
+
+func (c *Client) Recv() <-chan *Message {
+	return c.recvingCh
+}
+
+func (c *Client) Err() <-chan error {
+	return c.err
+}
+
+func (c *Client) Close() {
+	c.conn.Close()
+}
+
+func (c *Client) Main() {
+	// sending goroutine
+	go func() {
+		for {
+			msg := <-c.sendingCh
+			data, err := json.Marshal(msg)
+			if err != nil {
+				c.err <- err
+				continue
+			}
+			err = c.conn.WriteMessage(websocket.TextMessage, data)
+			if err != nil {
+				c.err <- err
+				continue
+			}
+		}
+	}()
+
+	// recving goroutine
+	go func() {
+		for {
+			mt, message, err := c.conn.ReadMessage()
+			if err != nil {
+				c.err <- err
+				continue
+			}
+
+			if mt == websocket.TextMessage {
+				var recvMsg Message
+				err = json.Unmarshal(message, &recvMsg)
+				if err != nil {
+					c.err <- err
+					continue
+				}
+				c.recvingCh <- &recvMsg
+			}
+
+		}
+	}()
+}
+
 type Server struct {
+	messages []Message
+	clients  map[*Client]struct{}
+}
+
+func NewServer() *Server {
+	s := &Server{
+		messages: nil,
+		clients:  make(map[*Client]struct{}),
+	}
+	return s
+}
+
+func (s *Server) Broadcast(msg *Message) {
+	for c, _ := range s.clients {
+		c.Send(msg)
+	}
+}
+
+func (s *Server) Main() {
+	for {
+		pongTick := time.Tick(1 * time.Second)
+		for {
+			select {
+			case <-pongTick:
+				pong := Message{User: "server", Body: "pong"}
+				s.Broadcast(&pong)
+			}
+		}
+	}
+}
+
+func (s *Server) Close(c *Client) {
+	c.Close()
+	delete(s.clients, c)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -29,52 +141,26 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Print("upgrade:", err)
 		return
 	}
-	defer c.Close()
+	client := NewClient(c)
+	s.clients[client] = struct{}{}
+	go client.Main()
 	go func() {
-		tick := time.Tick(5 * time.Second)
 		for {
-			<-tick
-			pong := Message{User: "server", Body: "pong"}
-			data, err := json.Marshal(&pong)
-			if err != nil {
-				log.Print("failed to marshal:", err)
-				break
-			}
-			err = c.WriteMessage(websocket.TextMessage, data)
-			if err != nil {
-				log.Print("failed to write:", err)
-				break
+			select {
+			case recv := <-client.Recv():
+				s.Broadcast(recv)
+			case err := <-client.Err():
+				log.Println("client error:", client, err)
+				s.Close(client)
 			}
 		}
 	}()
-
-	for {
-		mt, message, err := c.ReadMessage()
-		if err != nil {
-			log.Println("read:", err)
-			break
-		}
-		log.Printf("recv: %s", message)
-
-		var recvMsg Message
-		err = json.Unmarshal(message, &recvMsg)
-		if err != nil {
-			log.Println("failed to parse:", err)
-			break
-		}
-
-		err = c.WriteMessage(mt, message)
-		if err != nil {
-			log.Println("write:", err)
-			break
-		}
-	}
-
 }
 
 func main() {
-	g := &Server{}
-	http.Handle("/echo", g)
+	s := NewServer()
+	go s.Main()
+	http.Handle("/echo", s)
 	fs := assetFS()
 	fs.Prefix = "assets"
 	http.Handle("/", http.FileServer(fs))
