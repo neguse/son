@@ -16,7 +16,7 @@ import (
 const (
 	W = 320.0
 	H = 320.0
-	R = 10.0
+	R = 15.0
 
 	ROT  = 1.4
 	ACC  = 80.0
@@ -39,6 +39,32 @@ type Player struct {
 	VY float64 `json:"vy"`
 	VA float64 `json:"va"`
 	R  float64 `json:"r"`
+}
+
+func collision(p1 *Player, p2 *Player) {
+	dx := p2.X - p1.X
+	dy := p2.Y - p1.Y
+	d := math.Sqrt(dx*dx + dy*dy)
+	dix := dx / d
+	diy := dy / d
+	l := p1.R + p2.R
+	if d < l {
+		r1 := (l - d) * p1.R / l
+		r2 := (l - d) * p2.R / l
+		p1.X -= r1 * dix
+		p1.Y -= r1 * diy
+		p2.X += r2 * dix
+		p2.Y += r2 * diy
+
+		dvx := p2.VX - p1.VX
+		dvy := p2.VY - p1.VY
+		E := 0.9
+		dr := (dvx*dix + dvy*diy) * (1 + E) / l
+		p1.VX += dix * dr * p2.R
+		p1.VY += diy * dr * p2.R
+		p2.VX -= dix * dr * p1.R
+		p2.VY -= diy * dr * p1.R
+	}
 }
 
 type S2CMessage struct {
@@ -168,7 +194,12 @@ func (s *Server) Main() {
 			dt := time.Since(lastTick).Seconds()
 			lastTick = now
 			var msg S2CMessage
-			for _, ps := range s.clients {
+			clients := make([]*Client, 0, len(s.clients))
+			for c := range s.clients {
+				clients = append(clients, c)
+			}
+			for _, c := range clients {
+				ps := s.clients[c]
 				p, ks := ps.Player, ps.KeyState
 				p.VA = 0
 				if ks.L && ks.R {
@@ -207,6 +238,16 @@ func (s *Server) Main() {
 					p.Y = bottom
 					p.VY = -p.VY
 				}
+			}
+			for i, c := range clients {
+				ps := s.clients[c]
+				p := ps.Player
+				for _, c2 := range clients[i+1:] {
+					ps2 := s.clients[c2]
+					p2 := ps2.Player
+					collision(p, p2)
+				}
+
 				msg.Players = append(msg.Players, *p)
 			}
 			s.Broadcast(&msg)
