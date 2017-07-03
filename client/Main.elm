@@ -59,8 +59,10 @@ type alias Model =
     , keyState : C2SMessage
     }
 
-type alias Flags = 
+
+type alias Flags =
     { endpoint : String }
+
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
@@ -100,8 +102,6 @@ messageEncoder msg =
 
 type Msg
     = OnFrame Time
-    | InputUser String
-    | InputBody String
     | NewMessage String
     | KeyDown KeyCode
     | KeyUp KeyCode
@@ -135,26 +135,20 @@ changeKey key isDown state =
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg { flags, inputUser, inputBody, state, stateFrom, now, keyState } =
+update msg model =
     case msg of
         OnFrame justNow ->
-            case stateFrom of
+            case model.stateFrom of
                 Just _ ->
-                    ( Model flags inputUser inputBody state stateFrom (Just justNow) keyState, Cmd.none )
+                    ( { model | now = Just justNow }, Cmd.none )
 
                 Nothing ->
-                    ( Model flags inputUser inputBody state (Just justNow) (Just justNow) keyState, Cmd.none )
-
-        InputUser newUser ->
-            ( Model flags newUser inputBody state stateFrom now keyState, Cmd.none )
-
-        InputBody newBody ->
-            ( Model flags inputUser newBody state stateFrom now keyState, Cmd.none )
+                    ( { model | now = Just justNow, stateFrom = Just justNow }, Cmd.none )
 
         NewMessage str ->
             case decodeString messageDecoder str of
                 Ok newState ->
-                    ( Model flags inputUser inputBody newState Nothing Nothing keyState, Cmd.none )
+                    ( { model | state = newState, now = Nothing, stateFrom = Nothing }, Cmd.none )
 
                 Err err ->
                     Debug.crash err
@@ -162,19 +156,19 @@ update msg { flags, inputUser, inputBody, state, stateFrom, now, keyState } =
         KeyDown code ->
             let
                 newKeyState =
-                    (changeKey code True keyState)
+                    (changeKey code True model.keyState)
             in
-                ( Model flags inputUser inputBody state stateFrom now newKeyState
-                , WebSocket.send flags.endpoint (encode 0 (messageEncoder newKeyState))
+                ( { model | keyState = newKeyState }
+                , WebSocket.send model.flags.endpoint (encode 0 (messageEncoder newKeyState))
                 )
 
         KeyUp code ->
             let
                 newKeyState =
-                    (changeKey code False keyState)
+                    (changeKey code False model.keyState)
             in
-                ( Model flags inputUser inputBody state stateFrom now newKeyState
-                , WebSocket.send flags.endpoint (encode 0 (messageEncoder newKeyState))
+                ( { model | keyState = newKeyState }
+                , WebSocket.send model.flags.endpoint (encode 0 (messageEncoder newKeyState))
                 )
 
 
