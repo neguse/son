@@ -4,6 +4,7 @@ import AnimationFrame
 import Array exposing (Array, empty, toList)
 import Keyboard exposing (..)
 import Html exposing (..)
+import Html.Attributes exposing (href)
 import WebSocket
 import Json.Encode exposing (Value, encode)
 import Json.Decode exposing (decodeString, Decoder)
@@ -29,7 +30,8 @@ main =
 
 type alias S2CMessage =
     { players : Array Player
-    , yourId : Int }
+    , yourId : Int
+    }
 
 
 type alias Player =
@@ -205,13 +207,27 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    svg [ width "320", height "320", viewBox "0 0 320 320" ]
-        ((rect [ width "320", height "320", fill "none", stroke "#000" ] [])
-            :: (List.concatMap
-                    (viewPlayer model.state.yourId (diffTime model.stateFrom model.now))
-                    (toList model.state.players)
-               )
-        )
+    div []
+        [ svg [ width "320", height "320", viewBox "0 0 320 320" ]
+            ((rect [ width "320", height "320", fill "none", stroke "#000" ] [])
+                :: (List.concatMap
+                        (viewPlayer model.state.yourId (diffTime model.stateFrom model.now))
+                        (toList model.state.players)
+                   )
+            )
+        , div []
+            [ Html.text "Usage:"
+            , br [] []
+            , Html.text "Left and Right Key : rotation"
+            , br [] []
+            , Html.text "Up Key : accel"
+            , br [] []
+            , Html.text "Down Key : shoot bullets"
+            , br [] []
+            , br [] []
+            , Html.a [ href "https://github.com/neguse/son" ] [ Html.text "Source code is available here." ]
+            ]
+        ]
 
 
 diffTime : Maybe Time -> Maybe Time -> Time
@@ -238,11 +254,28 @@ viewPlayer yourId t p =
     let
         p_ =
             (reckoningPlayer t p)
-        me = (p.id == yourId)
-        myBullet = (p.id == -yourId)
-        otherBullet = (p.id < 0)
-        fillColor = if me then "#fff" else if myBullet then "#aaa" else if otherBullet then "#f22" else  "#000"
-        strokeColor = "#000"
+
+        me =
+            (p.id == yourId)
+
+        myBullet =
+            (p.id == -yourId)
+
+        otherBullet =
+            (p.id < 0)
+
+        fillColor =
+            if me then
+                "#fff"
+            else if myBullet then
+                "#aaa"
+            else if otherBullet then
+                "#f22"
+            else
+                "#000"
+
+        strokeColor =
+            "#000"
     in
         [ circle
             [ cx (toString p_.x)
