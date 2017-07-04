@@ -48,6 +48,7 @@ type alias C2SMessage =
     { l : Bool
     , r : Bool
     , u : Bool
+    , d : Bool
     }
 
 
@@ -68,7 +69,7 @@ type alias Flags =
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( Model flags "" "" (S2CMessage empty -1) Nothing Nothing (C2SMessage False False False), Cmd.none )
+    ( Model flags "" "" (S2CMessage empty -1) Nothing Nothing (C2SMessage False False False False), Cmd.none )
 
 
 playerDecoder : Decoder Player
@@ -97,6 +98,7 @@ messageEncoder msg =
         [ ( "l", Json.Encode.bool msg.l )
         , ( "r", Json.Encode.bool msg.r )
         , ( "u", Json.Encode.bool msg.u )
+        , ( "d", Json.Encode.bool msg.d )
         ]
 
 
@@ -126,6 +128,11 @@ upKeyCode =
     38
 
 
+downKeyCode : Int
+downKeyCode =
+    40
+
+
 changeKey : KeyCode -> Bool -> C2SMessage -> C2SMessage
 changeKey key isDown state =
     if key == leftKeyCode then
@@ -134,6 +141,8 @@ changeKey key isDown state =
         { state | r = isDown }
     else if key == upKeyCode then
         { state | u = isDown }
+    else if key == downKeyCode then
+        { state | d = isDown }
     else
         state
 
@@ -230,7 +239,9 @@ viewPlayer yourId t p =
         p_ =
             (reckoningPlayer t p)
         me = (p.id == yourId)
-        fillColor = if me then "#fff" else "#000"
+        myBullet = (p.id == -yourId)
+        otherBullet = (p.id < 0)
+        fillColor = if me then "#fff" else if myBullet then "#aaa" else if otherBullet then "#f22" else  "#000"
         strokeColor = "#000"
     in
         [ circle

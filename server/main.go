@@ -16,11 +16,14 @@ import (
 const (
 	W = 320.0
 	H = 320.0
-	R = 15.0
 
-	ROT  = 1.4
-	ACC  = 80.0
-	FRIC = -0.2
+	R  = 15.0
+	BR = 5.0
+
+	ROT   = 1.4
+	ACC   = 80.0
+	FRIC  = -0.2
+	BVELO = 150.0
 )
 
 var upgrader = websocket.Upgrader{
@@ -42,7 +45,48 @@ type Player struct {
 	Id int64   `json:"id"`
 }
 
+func (p *Player) Update(dt float64) {
+	p.VX += p.VX * FRIC * dt
+	p.VY += p.VY * FRIC * dt
+	p.X += p.VX * dt
+	p.Y += p.VY * dt
+	left := p.R
+	right := W - p.R
+	top := p.R
+	bottom := H - p.R
+
+	if p.Id >= 0 {
+		if p.X < left {
+			p.X = left
+			p.VX = -p.VX
+		}
+		if p.Y < top {
+			p.Y = top
+			p.VY = -p.VY
+		}
+		if right < p.X {
+			p.X = right
+			p.VX = -p.VX
+		}
+		if bottom < p.Y {
+			p.Y = bottom
+			p.VY = -p.VY
+		}
+	}
+}
+
+func (p *Player) OutOfField() bool {
+	left := -p.R
+	right := W + p.R
+	top := -p.R
+	bottom := H + p.R
+	return p.X < left || right < p.X || p.Y < top || bottom < p.Y
+}
+
 func collision(p1 *Player, p2 *Player) {
+	if p1.Id == p2.Id || p1.Id == -p2.Id {
+		return
+	}
 	dx := p2.X - p1.X
 	dy := p2.Y - p1.Y
 	d := math.Sqrt(dx*dx + dy*dy)
@@ -172,12 +216,14 @@ func (c *Client) Main() {
 
 type Server struct {
 	clients map[*Client]*PlayerState
+	bullets []Player
 	nextId  int64
 }
 
 func NewServer() *Server {
 	s := &Server{
 		clients: make(map[*Client]*PlayerState),
+		bullets: nil,
 		nextId:  1,
 	}
 	return s
@@ -202,6 +248,17 @@ func (s *Server) Main() {
 			for c := range s.clients {
 				clients = append(clients, c)
 			}
+			{
+				bullets := s.bullets[:0]
+				for i := range s.bullets {
+					b := &(s.bullets[i])
+					b.Update(dt)
+					if !b.OutOfField() {
+						bullets = append(bullets, *b)
+					}
+				}
+				s.bullets = bullets
+			}
 			for _, c := range clients {
 				ps := s.clients[c]
 				p, ks := ps.Player, ps.KeyState
@@ -213,35 +270,26 @@ func (s *Server) Main() {
 					p.VA = ROT
 				}
 				p.A += p.VA * dt
-
 				if ks.U {
 					p.VX += math.Cos(p.A) * ACC * dt
 					p.VY += math.Sin(p.A) * ACC * dt
 				}
-				p.VX += p.VX * FRIC * dt
-				p.VY += p.VY * FRIC * dt
-				p.X += p.VX * dt
-				p.Y += p.VY * dt
-				left := p.R
-				right := W - p.R
-				top := p.R
-				bottom := H - p.R
-				if p.X < left {
-					p.X = left
-					p.VX = -p.VX
+				if ks.D {
+					b := *p
+					b.Id = -p.Id
+					b.VA = 0
+					b.VX += math.Cos(p.A) * BVELO
+					b.VY += math.Sin(p.A) * BVELO
+					b.R = BR
+					s.bullets = append(s.bullets, b)
+
+					p.VX -= math.Cos(p.A) * BVELO * 0.1
+					p.VY -= math.Sin(p.A) * BVELO * 0.1
 				}
-				if p.Y < top {
-					p.Y = top
-					p.VY = -p.VY
-				}
-				if right < p.X {
-					p.X = right
-					p.VX = -p.VX
-				}
-				if bottom < p.Y {
-					p.Y = bottom
-					p.VY = -p.VY
-				}
+				p.Update(dt)
+			}
+			for _, b := range s.bullets {
+				players = append(players, b)
 			}
 			for i, c := range clients {
 				ps := s.clients[c]
@@ -251,7 +299,9 @@ func (s *Server) Main() {
 					p2 := ps2.Player
 					collision(p, p2)
 				}
-
+				for i := range s.bullets {
+					collision(p, &s.bullets[i])
+				}
 				players = append(players, *p)
 			}
 			for _, c := range clients {
