@@ -28,7 +28,8 @@ main =
 
 
 type alias S2CMessage =
-    { players : Array Player }
+    { players : Array Player
+    , yourId : Int }
 
 
 type alias Player =
@@ -39,6 +40,7 @@ type alias Player =
     , vy : Float
     , va : Float
     , r : Float
+    , id : Int
     }
 
 
@@ -66,7 +68,7 @@ type alias Flags =
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( Model flags "" "" (S2CMessage empty) Nothing Nothing (C2SMessage False False False), Cmd.none )
+    ( Model flags "" "" (S2CMessage empty -1) Nothing Nothing (C2SMessage False False False), Cmd.none )
 
 
 playerDecoder : Decoder Player
@@ -79,12 +81,14 @@ playerDecoder =
         |> required "vy" Json.Decode.float
         |> required "va" Json.Decode.float
         |> required "r" Json.Decode.float
+        |> required "id" Json.Decode.int
 
 
 messageDecoder : Decoder S2CMessage
 messageDecoder =
     decode S2CMessage
         |> required "players" (Json.Decode.array playerDecoder)
+        |> required "yourid" Json.Decode.int
 
 
 messageEncoder : C2SMessage -> Value
@@ -195,7 +199,7 @@ view model =
     svg [ width "320", height "320", viewBox "0 0 320 320" ]
         ((rect [ width "320", height "320", fill "none", stroke "#000" ] [])
             :: (List.concatMap
-                    (viewPlayer (diffTime model.stateFrom model.now))
+                    (viewPlayer model.state.yourId (diffTime model.stateFrom model.now))
                     (toList model.state.players)
                )
         )
@@ -220,17 +224,21 @@ reckoningPlayer t p =
         { p | x = p.x + tsec * p.vx, y = p.y + tsec * p.vy, a = p.a + tsec * p.va }
 
 
-viewPlayer : Time -> Player -> List (Svg msg)
-viewPlayer t p =
+viewPlayer : Int -> Time -> Player -> List (Svg msg)
+viewPlayer yourId t p =
     let
         p_ =
             (reckoningPlayer t p)
+        me = (p.id == yourId)
+        fillColor = if me then "#fff" else "#000"
+        strokeColor = "#000"
     in
         [ circle
             [ cx (toString p_.x)
             , cy (toString p_.y)
             , r (toString p_.r)
-            , stroke "#000"
+            , stroke strokeColor
+            , fill fillColor
             ]
             []
         , line
@@ -238,7 +246,7 @@ viewPlayer t p =
             , y1 (toString p_.y)
             , x2 (toString (p_.x + p_.r * 2 * (cos p_.a)))
             , y2 (toString (p_.y + p_.r * 2 * (sin p_.a)))
-            , stroke "#000"
+            , stroke strokeColor
             ]
             []
         ]

@@ -39,6 +39,7 @@ type Player struct {
 	VY float64 `json:"vy"`
 	VA float64 `json:"va"`
 	R  float64 `json:"r"`
+	Id int64   `json:"id"`
 }
 
 func collision(p1 *Player, p2 *Player) {
@@ -69,6 +70,7 @@ func collision(p1 *Player, p2 *Player) {
 
 type S2CMessage struct {
 	Players []Player `json:"players"`
+	YourId  int64    `json:"yourid"`
 }
 
 type KeyState struct {
@@ -170,11 +172,13 @@ func (c *Client) Main() {
 
 type Server struct {
 	clients map[*Client]*PlayerState
+	nextId  int64
 }
 
 func NewServer() *Server {
 	s := &Server{
 		clients: make(map[*Client]*PlayerState),
+		nextId:  1,
 	}
 	return s
 }
@@ -193,7 +197,7 @@ func (s *Server) Main() {
 		case now := <-updateTick:
 			dt := time.Since(lastTick).Seconds()
 			lastTick = now
-			var msg S2CMessage
+			var players []Player
 			clients := make([]*Client, 0, len(s.clients))
 			for c := range s.clients {
 				clients = append(clients, c)
@@ -248,9 +252,12 @@ func (s *Server) Main() {
 					collision(p, p2)
 				}
 
-				msg.Players = append(msg.Players, *p)
+				players = append(players, *p)
 			}
-			s.Broadcast(&msg)
+			for _, c := range clients {
+				msg := &S2CMessage{Players: players, YourId: s.clients[c].Player.Id}
+				c.Send(msg)
+			}
 		}
 		log.Println("clients:", len(s.clients))
 	}
@@ -268,6 +275,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := NewClient(c)
+	id := s.nextId
+	s.nextId++
 	s.clients[client] = &PlayerState{
 		Player: &Player{
 			X:  rand.Float64() * W,
@@ -276,6 +285,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			A:  0.0,
 			VX: 0.0,
 			VY: 0.0,
+			Id: id,
 		},
 		KeyState: &KeyState{},
 	}
