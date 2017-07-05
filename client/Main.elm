@@ -4,6 +4,7 @@ import AnimationFrame
 import Array exposing (Array, empty, toList)
 import Keyboard exposing (..)
 import Html exposing (..)
+import Html.Events exposing (onMouseUp, onMouseDown, on)
 import Html.Attributes exposing (href)
 import WebSocket
 import Json.Encode exposing (Value, encode)
@@ -205,6 +206,36 @@ subscriptions model =
 -- VIEW
 
 
+button : String -> KeyCode -> Html Msg
+button txt key =
+    div
+        (Html.Attributes.style
+            [ ( "background", "#ecf0f1" )
+            , ( "border", "0" )
+            , ( "color", "#34495f" )
+            , ( "cursor", "pointer" )
+            , ( "text-align", "center" )
+            , ( "-webkit-user-select", "none" )
+            , ( "display", "block" )
+            , ( "text-align", "center" )
+            , ( "font-size", "24px" )
+            , ( "font-weight", "300" )
+            , ( "outline", "none" )
+            , ( "float", "left" )
+            , ( "width", "60px" )
+            , ( "height", "60px" )
+            , ( "margin", "20px 20px 0 0" )
+            , ( "padding", "0" )
+            ]
+            :: [ on "touchstart" (Json.Decode.succeed (KeyDown key))
+               , on "touchend" (Json.Decode.succeed (KeyUp key))
+               , onMouseDown (KeyDown key)
+               , onMouseUp (KeyUp key)
+               ]
+        )
+        [ Html.text txt ]
+
+
 view : Model -> Html Msg
 view model =
     div []
@@ -215,6 +246,12 @@ view model =
                         (toList model.state.players)
                    )
             )
+        , div []
+            [ button "←" leftKeyCode
+            , button "→" rightKeyCode
+            , button "↓" downKeyCode
+            , button "↑" upKeyCode
+            ]
         , div []
             [ Html.text "Usage:"
             , br [] []
