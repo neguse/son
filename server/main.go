@@ -215,16 +215,18 @@ func (c *Client) Main() {
 }
 
 type Server struct {
-	clients map[*Client]*PlayerState
-	bullets []Player
-	nextId  int64
+	clients   map[*Client]*PlayerState
+	bullets   []Player
+	nextId    int64
+	closingCh chan *Client
 }
 
 func NewServer() *Server {
 	s := &Server{
-		clients: make(map[*Client]*PlayerState),
-		bullets: nil,
-		nextId:  1,
+		clients:   make(map[*Client]*PlayerState),
+		bullets:   nil,
+		nextId:    1,
+		closingCh: make(chan *Client, 32),
 	}
 	return s
 }
@@ -240,6 +242,8 @@ func (s *Server) Main() {
 	lastTick := time.Now()
 	for {
 		select {
+		case c := <-s.closingCh:
+			delete(s.clients, c)
 		case now := <-updateTick:
 			dt := time.Since(lastTick).Seconds()
 			lastTick = now
@@ -315,7 +319,7 @@ func (s *Server) Main() {
 
 func (s *Server) Close(c *Client) {
 	c.Close()
-	delete(s.clients, c)
+	s.closingCh <- c
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
