@@ -5,7 +5,7 @@ import Array exposing (Array, empty, toList)
 import Keyboard exposing (..)
 import Html exposing (..)
 import Html.Events exposing (onMouseUp, onMouseDown, on)
-import Html.Attributes exposing (href)
+import Html.Attributes exposing (href, src)
 import WebSocket
 import Json.Encode exposing (Value, encode)
 import Json.Decode exposing (decodeString, Decoder)
@@ -261,6 +261,8 @@ view model =
             , br [] []
             , Html.text "Down Key : shoot bullets"
             , br [] []
+            , br [] []
+            , img [src "/qr.png"] []
             , br [] []
             , Html.a [ href "https://github.com/neguse/son" ] [ Html.text "Source code is available here." ]
             ]
