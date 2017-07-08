@@ -1,0 +1,6 @@
+#!/bin/sh
+
+if ! [ -f $GOPATH/bin/server ]; then
+	/bin/build.sh
+fi
+
