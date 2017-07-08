@@ -1,2 +1,2 @@
 #!/usr/bin/execlineb -P
-/volume/bin/server
+/volume/go/bin/server
