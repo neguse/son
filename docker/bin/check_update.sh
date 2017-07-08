@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -ex
 
 cd /volume/go/src/github.com/neguse/son
 
@@ -6,8 +6,10 @@ LOCAL=$(git rev-parse '@')
 REMOTE=$(git rev-parse '@{u}')
 
 if [ $LOCAL != $REMOTE ]; then
+    echo "repository updated."
     /bin/build.sh
+    echo "new build success. restart."
     s6-svc -t /var/run/s6/services/10-son
 else
-
+    echo "repository not updated."
 fi
