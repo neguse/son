@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 )
@@ -127,6 +128,7 @@ func main() {
 	fs := assetFS()
 	fs.Prefix = "assets"
 	http.Handle("/", http.FileServer(fs))
+	log.Println("Listen:", port)
 	err := http.ListenAndServe(fmt.Sprint(":", port), nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
