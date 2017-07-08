@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 pkg-config \
                 git \
                 ca-certificates \
-                cron \
         && rm -rf /var/lib/apt/lists/*
 
 ENV GOROOT /usr/local/go
