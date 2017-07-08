@@ -4,6 +4,7 @@ cd /volume/go/src/github.com/neguse/son
 
 while :
 do
+    git fetch
     LOCAL=$(git rev-parse '@')
     REMOTE=$(git rev-parse '@{u}')
 
