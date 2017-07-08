@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 
 	"github.com/gorilla/websocket"
 )
@@ -74,11 +75,10 @@ func (c *Client) Main() {
 			mt, message, err := c.conn.ReadMessage()
 			if err != nil {
 				c.errCh <- err
-				if _, ok := err.(*websocket.CloseError); ok {
-					c.Close()
-					break
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway) {
+					log.Println("unexpected close error : ", err)
 				}
-				continue
+				break
 			}
 
 			if mt == websocket.TextMessage {
