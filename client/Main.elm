@@ -262,7 +262,7 @@ view model =
             , Html.text "Down Key : shoot bullets"
             , br [] []
             , br [] []
-            , img [src "/qr.png"] []
+            , img [src "/qr.svg"] []
             , br [] []
             , Html.a [ href "https://github.com/neguse/son" ] [ Html.text "Source code is available here." ]
             ]
