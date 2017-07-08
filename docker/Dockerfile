@@ -23,5 +23,6 @@ RUN go get github.com/jteeuwen/go-bindata/...
 RUN go get github.com/elazarl/go-bindata-assetfs/...
 
 ADD https://github.com/just-containers/s6-overlay/releases/download/v1.19.1.1/s6-overlay-amd64.tar.gz /
+COPY ./ /
 ENTRYPOINT ["/init"]
 # CMD ["nginx"]
