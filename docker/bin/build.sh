@@ -18,4 +18,5 @@ go-bindata-assetfs assets/...
 mv bindata_assetfs.go server/
 
 cd server
+go get -u .
 go install
