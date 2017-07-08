@@ -11,18 +11,20 @@ import (
 )
 
 type Server struct {
-	clients   map[*Client]*PlayerState
-	bullets   []Player
-	nextId    int64
-	closingCh chan *Client
+	clients    map[*Client]*PlayerState
+	bullets    []Player
+	nextId     int64
+	arrivingCh chan *Client
+	closingCh  chan *Client
 }
 
 func NewServer() *Server {
 	s := &Server{
-		clients:   make(map[*Client]*PlayerState),
-		bullets:   nil,
-		nextId:    1,
-		closingCh: make(chan *Client, 32),
+		clients:    make(map[*Client]*PlayerState),
+		bullets:    nil,
+		nextId:     1,
+		arrivingCh: make(chan *Client, 32),
+		closingCh:  make(chan *Client, 32),
 	}
 	return s
 }
@@ -35,11 +37,48 @@ func (s *Server) Broadcast(msg *S2CMessage) {
 
 func (s *Server) Main() {
 	updateTick := time.Tick(100 * time.Millisecond)
+	logTick := time.Tick(1 * time.Minute)
 	lastTick := time.Now()
 	for {
 		select {
 		case c := <-s.closingCh:
+			log.Print("client closing:", s.clients[c].Player.Id)
 			delete(s.clients, c)
+		case c := <-s.arrivingCh:
+			id := s.nextId
+			s.nextId++
+			s.clients[c] = &PlayerState{
+				Player: &Player{
+					X:  rand.Float64() * W,
+					Y:  rand.Float64() * H,
+					R:  R,
+					A:  0.0,
+					VX: 0.0,
+					VY: 0.0,
+					Id: id,
+				},
+				KeyState: &KeyState{},
+			}
+			log.Print("client arrived:", id)
+			go c.Main()
+			go func() {
+				for {
+					select {
+					case recvMsg := <-c.Recv():
+						ks := s.clients[c].KeyState
+						ks.L = recvMsg.L
+						ks.R = recvMsg.R
+						ks.U = recvMsg.U
+						ks.D = recvMsg.D
+
+					case err := <-c.Err():
+						log.Println("client error:", c, err)
+						s.Close(c)
+					}
+				}
+			}()
+		case <-logTick:
+			log.Println("clients:", len(s.clients))
 		case now := <-updateTick:
 			dt := time.Since(lastTick).Seconds()
 			lastTick = now
@@ -109,7 +148,6 @@ func (s *Server) Main() {
 				c.Send(msg)
 			}
 		}
-		log.Println("clients:", len(s.clients))
 	}
 }
 
@@ -129,35 +167,5 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := NewClient(c)
-	id := s.nextId
-	s.nextId++
-	s.clients[client] = &PlayerState{
-		Player: &Player{
-			X:  rand.Float64() * W,
-			Y:  rand.Float64() * H,
-			R:  R,
-			A:  0.0,
-			VX: 0.0,
-			VY: 0.0,
-			Id: id,
-		},
-		KeyState: &KeyState{},
-	}
-	go client.Main()
-	go func() {
-		for {
-			select {
-			case recvMsg := <-client.Recv():
-				ks := s.clients[client].KeyState
-				ks.L = recvMsg.L
-				ks.R = recvMsg.R
-				ks.U = recvMsg.U
-				ks.D = recvMsg.D
-
-			case err := <-client.Err():
-				log.Println("client error:", client, err)
-				s.Close(client)
-			}
-		}
-	}()
+	s.arrivingCh <- client
 }
