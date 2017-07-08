@@ -19,9 +19,6 @@ ADD https://golang.org/dl/go1.8.3.linux-amd64.tar.gz /usr/local
 ADD https://nodejs.org/dist/v8.1.3/node-v8.1.3-linux-x64.tar.xz /usr/local
 RUN npm install -g yarn && yarn global add elm@0.18.0
 
-RUN go get github.com/jteeuwen/go-bindata/...
-RUN go get github.com/elazarl/go-bindata-assetfs/...
-
 ADD https://github.com/just-containers/s6-overlay/releases/download/v1.19.1.1/s6-overlay-amd64.tar.gz /
 COPY ./ /
 ENTRYPOINT ["/init"]

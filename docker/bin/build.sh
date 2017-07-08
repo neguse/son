@@ -8,6 +8,9 @@ export PATH=$PATH:$NODEROOT/bin:$GOROOT/bin:$GOPATH/bin/
 
 REPO=github.com/neguse/son
 
+go get -u github.com/jteeuwen/go-bindata/...
+go get -u github.com/elazarl/go-bindata-assetfs/...
+
 go get -u $REPO || echo "get"
 cd $GOPATH/src/$REPO
 cd client
