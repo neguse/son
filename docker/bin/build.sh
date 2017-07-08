@@ -1,5 +1,6 @@
 #!/bin/sh -ex
 
+export HOME=/volume
 export GOROOT=/usr/local/go
 export GOPATH=/volume/go
 export NODEROOT=/usr/local/node-v8.1.3-linux-x64
