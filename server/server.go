@@ -42,8 +42,10 @@ func (s *Server) Main() {
 	for {
 		select {
 		case c := <-s.closingCh:
-			log.Print("client closing:", s.clients[c].Player.Id)
-			delete(s.clients, c)
+			if ps, ok := s.clients[c]; ok {
+				log.Print("client closing:", ps.Player.Id)
+				delete(s.clients, c)
+			}
 		case c := <-s.arrivingCh:
 			id := s.nextId
 			s.nextId++
