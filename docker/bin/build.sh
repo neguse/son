@@ -7,7 +7,7 @@ PATH=$PATH:$NODEROOT/bin:$GOROOT/bin:$GOPATH/bin/
 
 REPO=github.com/neguse/son
 
-go get -u https://$REPO
+go get -u $REPO
 cd $GOPATH/src/$REPO
 cd client
 elm make Main.elm --yes --output ../assets/main.js
