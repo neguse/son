@@ -2,4 +2,4 @@ SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # m h dom mon dow user	command
-* *     *   *   * root  /bin/check_rebuild.sh
+* *     *   *   * root  /bin/check_rebuild.sh >> /rebuild.log 2>&1
