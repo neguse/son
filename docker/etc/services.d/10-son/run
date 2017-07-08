@@ -1,2 +1,2 @@
 #!/usr/bin/execlineb -P
-server
+/volume/bin/server
