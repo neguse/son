@@ -37,7 +37,7 @@ func (s *Server) Broadcast(msg *S2CMessage) {
 
 func (s *Server) Main() {
 	updateTick := time.Tick(100 * time.Millisecond)
-	logTick := time.Tick(1 * time.Minute)
+	logTick := time.Tick(1 * time.Hour)
 	lastTick := time.Now()
 	for {
 		select {
